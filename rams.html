@@ -1,0 +1,1813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Timelord — build and run workout timers</title>
+<meta name="description" content="Build multi-step interval timers and run them with big, glanceable displays and sound cues.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   A control panel, not a website: strict grid, one committed
+   signal colour, mono numerals for anything measured, hairline
+   registration marks instead of shadows. Elegance from precision,
+   not decoration.
+   ============================================================ */
+:root{
+  --paper:        #EFEDE6;
+  --paper-raised: #FBFAF7;
+  --ink:          #171715;
+  --ink-soft:     #6D6B62;
+  --line:         #C9C6BA;
+  --line-strong:  #171715;
+  --blue:         #171715;
+  --blue-deep:    #000000;
+  --orange:       #E15616;
+  --orange-deep:  #B4430E;
+  --rest-green:   #4F6E55;
+  --prep-amber:   #A17A1E;
+  --danger:       #A83A2C;
+  --focus:        #E15616;
+  --grid-dot:     rgba(23,23,21,.07);
+
+  --radius-sm: 1px;
+  --radius-md: 1px;
+  --radius-lg: 1px;
+
+  --font-ui: "Space Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Space Grotesk", var(--font-ui);
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --shadow-1: none;
+  --shadow-2: none;
+}
+
+:root[data-theme="dark"]{
+  --paper:        #131311;
+  --paper-raised: #1C1C19;
+  --ink:          #F3F1E9;
+  --ink-soft:     #9A9788;
+  --line:         #38362F;
+  --line-strong:  #F3F1E9;
+  --blue:         #F3F1E9;
+  --blue-deep:    #FFFFFF;
+  --orange:       #F0703B;
+  --orange-deep:  #F58A5D;
+  --rest-green:   #85A38B;
+  --prep-amber:   #CBA24E;
+  --danger:       #DE8B7F;
+  --grid-dot:     rgba(243,241,233,.055);
+  --shadow-1: none;
+  --shadow-2: none;
+}
+
+*, *::before, *::after{ box-sizing: border-box; }
+html{ color-scheme: light; }
+html[data-theme="dark"]{ color-scheme: dark; }
+
+body{
+  margin: 0;
+  font-family: var(--font-ui);
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+h1,h2,h3{ font-family: var(--font-display); margin: 0 0 .3em; font-weight: 700; letter-spacing: -0.015em; }
+p{ margin: 0 0 1em; color: var(--ink-soft); }
+button{ font-family: inherit; }
+a{ color: var(--ink); text-decoration-color: var(--orange); text-underline-offset: 3px; }
+
+.visually-hidden{
+  position:absolute; width:1px;height:1px; overflow:hidden;
+  clip:rect(0,0,0,0); white-space:nowrap; border:0; padding:0; margin:-1px;
+}
+
+.skip-link{
+  position:absolute; left:8px; top:-40px; background:var(--ink); color: var(--paper);
+  padding:8px 14px; border-radius:var(--radius-sm); z-index:200; transition: top .15s;
+  font-family: var(--font-mono); font-size:.8rem;
+}
+.skip-link:focus{ top:8px; }
+
+:focus-visible{ outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.no-js-notice{ display:none; }
+.no-js .no-js-notice{
+  display:block; max-width: 640px; margin: 4rem auto; padding: 1.5rem 1.75rem;
+  background: var(--paper-raised); border: 1px solid var(--line); border-radius: var(--radius-md);
+}
+.no-js #app{ display:none; }
+
+/* ============================================================
+   APP CHROME
+   ============================================================ */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--line-strong);
+  position: sticky; top:0; background: var(--paper); z-index: 20;
+}
+.brand{
+  display:flex; align-items:baseline; gap:.55em; font-family: var(--font-display);
+  font-weight:700; font-size:1.02rem; color: var(--ink); text-decoration:none;
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.brand::before{
+  content:""; display:inline-block; width:9px; height:9px; background: var(--orange);
+  margin-right:.15em; flex-shrink:0;
+}
+.brand small{ font-weight:400; font-size:.7em; color: var(--ink-soft); font-family: var(--font-ui); text-transform:none; letter-spacing:0; }
+.brand::after{
+  content:"TL\2013 01"; font-family: var(--font-mono); font-size:.62rem; color: var(--ink-soft);
+  letter-spacing:.04em; text-transform:none; border:1px solid var(--line); padding:2px 5px; margin-left:.3em;
+}
+.topbar-actions{ display:flex; gap:8px; align-items:center; }
+
+.icon-btn{
+  border:1px solid var(--line-strong); background: var(--paper-raised); color: var(--ink);
+  width:36px; height:36px; border-radius: var(--radius-sm); cursor:pointer;
+  display:flex; align-items:center; justify-content:center; font-size:1rem;
+  transition: background .12s ease, color .12s ease;
+}
+.icon-btn:hover{ background: var(--ink); color: var(--paper); }
+.icon-btn:active{ opacity:.75; }
+
+main{ max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+
+.view{ display:none; }
+.view.is-active{ display:block; animation: fade-in .1s ease; }
+@keyframes fade-in{ from{ opacity:0;} to{opacity:1;} }
+@media (prefers-reduced-motion: reduce){
+  .view.is-active{ animation: none; }
+  *{ scroll-behavior: auto !important; }
+}
+
+.page-head{ margin-bottom: 26px; }
+.page-head::before{
+  content: "\2014 " var(--idx, '00') " / 06";
+  display:block; font-family: var(--font-mono); font-size:.68rem; letter-spacing:.09em;
+  color: var(--ink-soft); margin-bottom:12px; text-transform:uppercase;
+}
+.page-head h1{ position:relative; display:inline-block; padding-bottom:14px; }
+.page-head h1::after{
+  content:""; position:absolute; left:0; bottom:0; width:46px; height:3px; background:var(--orange);
+}
+.page-head .eyebrow-link{
+  display:inline-flex; align-items:center; gap:6px; color: var(--ink-soft);
+  text-decoration:none; font-size:.78rem; margin-bottom: 16px; background:none; border:none; cursor:pointer; padding:0;
+  text-transform: uppercase; letter-spacing: .06em; font-weight:600; font-family: var(--font-mono);
+}
+.page-head .eyebrow-link:hover{ color: var(--orange); }
+
+/* Buttons — flat, rectangular, legend-like */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding: 12px 20px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
+  background: var(--paper-raised); color: var(--ink); font-size: .83rem; font-weight:600;
+  cursor:pointer; transition: background .12s ease, color .12s ease, border-color .12s ease;
+  text-decoration:none; text-transform: uppercase; letter-spacing: .05em;
+}
+.btn:hover{ background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn:active{ opacity:.8; }
+.btn-primary{ background: var(--orange); border-color: var(--orange); color: #fff; }
+.btn-primary:hover{ background: var(--orange-deep); border-color: var(--orange-deep); color:#fff; }
+.btn-accent{ background: var(--orange); border-color: var(--orange); color: #fff; }
+.btn-accent:hover{ background: var(--orange-deep); border-color: var(--orange-deep); }
+.btn-ghost{ background: transparent; border-color: transparent; }
+.btn-ghost:hover{ background: var(--paper-raised); color: var(--ink); border-color: var(--line); }
+.btn-danger{ color: var(--danger); border-color: var(--line); }
+.btn-danger:hover{ background: var(--danger); border-color: var(--danger); color:#fff; }
+.btn-block{ width:100%; }
+.btn-sm{ padding: 7px 14px; font-size: .72rem; }
+.btn[disabled]{ opacity:.4; cursor:not-allowed; }
+
+/* Cards — flat panel with registration-mark corners */
+.card{
+  background: var(--paper-raised); border:1px solid var(--line-strong); border-radius: var(--radius-lg);
+  padding: 22px 20px; box-shadow: none; position:relative;
+}
+.card::before, .card::after{
+  content:"+"; position:absolute; top:5px; font-family: var(--font-mono); font-size:11px;
+  color: var(--ink-soft); opacity:.4; line-height:1; pointer-events:none;
+}
+.card::before{ left:7px; }
+.card::after{ right:7px; }
+
+/* ============================================================
+   LIBRARY VIEW
+   ============================================================ */
+.library-actions{
+  display:grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-bottom: 34px;
+  background: var(--line-strong); border: 1px solid var(--line-strong);
+}
+@media (max-width: 640px){ .library-actions{ grid-template-columns: 1fr; } }
+
+.action-tile{
+  display:flex; flex-direction:column; align-items:flex-start; gap:7px;
+  padding: 20px 18px; text-align:left; border-radius: 0;
+  border: none; background: var(--paper-raised); cursor:pointer;
+  transition: background .12s ease; position:relative;
+}
+.action-tile:hover{ background: var(--paper); }
+.action-tile:active{ opacity:.85; }
+.action-tile .tile-icon{ font-size: 1.2rem; opacity:.8; }
+.action-tile strong{ font-size: .88rem; text-transform: uppercase; letter-spacing:.045em; }
+.action-tile span{ color: var(--ink-soft); font-size: .82rem; }
+.action-tile.is-primary{ background: var(--orange); border-color: var(--orange); color:#fff; }
+.action-tile.is-primary:hover{ background: var(--orange-deep); }
+.action-tile.is-primary span{ color: rgba(255,255,255,.85); }
+.action-tile::after{
+  position:absolute; top:10px; right:12px; font-family: var(--font-mono);
+  font-size:.68rem; color: var(--ink-soft); opacity:.55;
+}
+.action-tile.is-primary::after{ color: rgba(255,255,255,.7); }
+#goQuickBuilder::after{ content:"01"; }
+#goManualBuilder::after{ content:"02"; }
+#goPresets::after{ content:"03"; }
+
+.section-label{
+  font-size:.72rem; text-transform: uppercase; letter-spacing:.1em; color: var(--ink-soft);
+  font-weight:700; margin: 34px 0 12px; font-family: var(--font-mono);
+  display:flex; align-items:center; gap:10px;
+}
+.section-label::after{ content:""; flex:1; height:1px; background: var(--line); }
+
+.timer-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+.timer-row{
+  display:flex; align-items:center; justify-content:space-between; gap: 12px;
+  padding: 15px 4px; background: transparent; border:none; border-bottom:1px solid var(--line); border-radius: 0;
+}
+.timer-row:first-child{ border-top: 1px solid var(--line-strong); }
+.timer-row-info strong{ display:block; font-size: .92rem; font-weight:600; }
+.timer-row-info span{ color: var(--ink-soft); font-size: .8rem; font-family: var(--font-mono); }
+.timer-row-actions{ display:flex; gap:6px; flex-shrink:0; }
+
+.empty-state{
+  text-align:center; padding: 44px 20px; color: var(--ink-soft); border: 1px dashed var(--line);
+  border-radius: var(--radius-lg); font-family: var(--font-mono); font-size:.85rem;
+}
+
+.preset-grid{ display:grid; grid-template-columns: repeat(2,1fr); gap:1px; background:var(--line-strong); border:1px solid var(--line-strong); }
+@media (max-width: 560px){ .preset-grid{ grid-template-columns: 1fr; } }
+.preset-card{
+  text-align:left; padding:18px; border-radius: 0; border:none;
+  background: var(--paper-raised); cursor:pointer; transition: background .12s ease;
+}
+.preset-card:hover{ background: var(--paper); }
+.preset-card strong{ display:block; margin-bottom:3px; font-size:.88rem; text-transform:uppercase; letter-spacing:.04em; }
+.preset-card span{ font-size:.8rem; color: var(--ink-soft); font-family: var(--font-mono); }
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+.field{ margin-bottom: 19px; }
+.field label{ display:block; font-weight:600; font-size:.72rem; margin-bottom:9px; text-transform:uppercase; letter-spacing:.07em; color: var(--ink-soft); font-family: var(--font-mono); }
+.field .hint{ font-size:.78rem; color: var(--ink-soft); margin-top:5px; }
+input[type="text"], input[type="number"]{
+  width:100%; padding: 10px 12px; border-radius: var(--radius-sm); border:1px solid var(--line-strong);
+  background: var(--paper-raised); color: var(--ink); font-size: 1rem; font-family: var(--font-mono);
+}
+input[type="text"]{ font-family: var(--font-ui); }
+input[type="text"]:focus-visible, input[type="number"]:focus-visible{ outline-offset:0; border-color: var(--orange); }
+.field-row{ display:grid; grid-template-columns: repeat(auto-fit, minmax(120px,1fr)); gap: 12px; }
+
+.time-input{ display:flex; align-items:center; gap:6px; }
+.time-input input{ text-align:center; width: 4.5em; flex:none; }
+.time-input span{ color: var(--ink-soft); font-size:.78rem; font-family: var(--font-mono); text-transform:uppercase; letter-spacing:.04em; }
+
+.type-toggle{ display:flex; gap:1px; background: var(--line-strong); border:1px solid var(--line-strong); }
+.type-toggle button{
+  flex:1; padding: 10px; border-radius: 0; border:none;
+  background: var(--paper-raised); cursor:pointer; font-size:.74rem; font-weight:700; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing:.05em; font-family: var(--font-mono);
+}
+.type-toggle button[aria-pressed="true"]{ color:#fff; }
+.type-toggle button[data-type="work"][aria-pressed="true"]{ background: var(--orange); }
+.type-toggle button[data-type="rest"][aria-pressed="true"]{ background: var(--rest-green); }
+.type-toggle button[data-type="prep"][aria-pressed="true"]{ background: var(--prep-amber); }
+
+/* Step list (builder) */
+.step-list{ list-style:none; margin:0 0 16px; padding:0; display:flex; flex-direction:column; counter-reset: step; }
+.step-item{
+  display:flex; align-items:center; gap:10px; padding: 11px 6px; border-radius: 0;
+  border:none; border-bottom:1px solid var(--line); background: var(--paper-raised);
+  counter-increment: step;
+}
+.step-item:first-child{ border-top: 1px solid var(--line-strong); }
+.step-item.is-dragging{ opacity: .5; }
+.step-item::before{
+  content: counter(step, decimal-leading-zero); font-family: var(--font-mono); font-size:.72rem;
+  color: var(--ink-soft); width:1.6em; flex-shrink:0; text-align:right;
+}
+.step-swatch{ width:4px; align-self:stretch; border-radius:0; flex-shrink:0; }
+.step-swatch.work{ background: var(--orange); }
+.step-swatch.rest{ background: var(--rest-green); }
+.step-swatch.prep{ background: var(--prep-amber); }
+.step-main{ flex:1; min-width:0; }
+.step-main strong{ display:block; font-size:.88rem; font-weight:600; }
+.step-main span{ font-size:.78rem; color: var(--ink-soft); font-family: var(--font-mono); }
+.step-controls{ display:flex; gap:4px; flex-shrink:0; }
+.step-controls button{
+  width:29px; height:29px; border-radius:var(--radius-sm); border:1px solid var(--line); background:var(--paper-raised);
+  cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:.85rem; color: var(--ink-soft);
+}
+.step-controls button:hover{ border-color: var(--ink); color: var(--ink); }
+
+.builder-summary{
+  display:flex; justify-content:space-between; align-items:center; padding: 13px 16px;
+  background: var(--paper); border-radius: var(--radius-md); margin-bottom:19px; font-size:.78rem;
+  border: 1px solid var(--line-strong); text-transform:uppercase; letter-spacing:.05em; color: var(--ink-soft);
+  font-family: var(--font-mono);
+}
+.builder-summary strong{ font-family: var(--font-mono); color: var(--ink); letter-spacing:0; text-transform:none; font-variant-numeric: tabular-nums; font-size:1rem; }
+
+.sticky-actions{
+  position: sticky; bottom: 0; background: var(--paper);
+  padding-top: 20px; display:flex; gap:10px; margin-top: 8px; border-top: 1px solid var(--line-strong);
+}
+
+.tabs{ display:flex; gap:0; border-bottom:1px solid var(--line-strong); margin-bottom:22px; }
+.tabs button{
+  padding:10px 16px; background:none; border:none; border-bottom:2px solid transparent; cursor:pointer;
+  font-weight:600; color: var(--ink-soft); font-size:.78rem; text-transform:uppercase; letter-spacing:.05em;
+  margin-bottom:-1px; font-family: var(--font-mono);
+}
+.tabs button[aria-selected="true"]{ color: var(--ink); border-color: var(--orange); }
+
+.step-preview-list{ font-size:.85rem; color: var(--ink-soft); }
+
+.range-select-row{ display:flex; align-items:center; gap:8px; margin-bottom:14px; font-size:.78rem; color: var(--ink-soft); font-family: var(--font-mono); }
+
+/* ============================================================
+   RUN VIEW
+   ============================================================ */
+.run-view{
+  position: fixed; inset:0; z-index:100; display:flex; flex-direction:column;
+  background: var(--paper); color: var(--ink);
+}
+.run-view[hidden]{ display:none; }
+
+.run-top{ display:flex; justify-content:space-between; align-items:center; padding: 16px 22px; position:relative; }
+.run-top::before, .run-top::after{
+  content:"+"; position:absolute; top:5px; font-family: var(--font-mono); font-size:11px; color: var(--ink-soft); opacity:.4;
+}
+.run-top::before{ left:8px; }
+.run-top::after{ right:8px; }
+.run-top button{
+  background: var(--paper-raised); border:1px solid var(--line-strong); color: var(--ink);
+  width:36px; height:36px; border-radius:var(--radius-sm); cursor:pointer; font-size:1rem;
+}
+.run-top button:hover{ background: var(--ink); color: var(--paper); }
+.run-secondary-actions{ display:flex; justify-content:center; gap:10px; margin: 2px 20px 0; }
+.run-secondary-actions button{
+  background: transparent; border:1px solid var(--line); color: var(--ink-soft);
+  padding: 6px 16px; border-radius: var(--radius-sm); font-size:.7rem; font-weight:700; cursor:pointer;
+  text-transform: uppercase; letter-spacing:.06em; font-family: var(--font-mono);
+}
+.run-secondary-actions button:hover{ border-color: var(--ink); color: var(--ink); }
+
+.run-progress-track{
+  height:4px; background-color: var(--paper-raised); border-radius:0; margin: 16px 22px 0; overflow:hidden;
+  background-image: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px 10%);
+  border: 1px solid var(--line);
+}
+.run-progress-fill{ height:100%; background: var(--ink); border-radius:0; transition: width .25s linear; }
+.run-view[data-state="work"] .run-progress-fill{ background: var(--orange); }
+.run-view[data-state="rest"] .run-progress-fill{ background: var(--rest-green); }
+.run-view[data-state="prep"] .run-progress-fill{ background: var(--prep-amber); }
+.run-view[data-state="done"] .run-progress-fill{ background: var(--ink); }
+
+.run-center{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding: 10px 20px; }
+.run-label{
+  font-size: clamp(.78rem, 2.2vw, .95rem); font-weight:700; text-transform: uppercase; letter-spacing:.16em;
+  margin-bottom:14px; color: var(--ink-soft); font-family: var(--font-mono);
+}
+.run-view[data-state="work"] .run-label{ color: var(--orange-deep); }
+.run-view[data-state="rest"] .run-label{ color: var(--rest-green); }
+.run-view[data-state="prep"] .run-label{ color: var(--prep-amber); }
+.run-clock::before{
+  content:""; display:block; height:7px; margin:0 auto 22px; width:min(64%,300px);
+  background-image: repeating-linear-gradient(to right, var(--line-strong) 0 1px, transparent 1px 11.11%);
+  opacity:.5;
+}
+.run-clock{
+  font-family: var(--font-mono); font-weight:700; font-variant-numeric: tabular-nums;
+  font-size: clamp(4.6rem, 24vw, 12rem); line-height:1; margin: 6px 0; letter-spacing:-0.02em;
+  color: var(--ink);
+}
+.run-round{ font-size: clamp(.8rem, 2vw, 1rem); opacity:.9; margin-bottom: 4px; color: var(--ink-soft); text-transform:uppercase; letter-spacing:.08em; font-family: var(--font-mono); }
+.run-total{ font-size: .76rem; color: var(--ink-soft); margin-top:8px; text-transform:uppercase; letter-spacing:.05em; font-family: var(--font-mono); }
+.run-next{ font-size: clamp(.8rem, 2vw, .92rem); color: var(--ink-soft); font-family: var(--font-mono); }
+
+.run-emom-bar{
+  width: min(560px, 90%); height: 14px; border-radius:0; overflow:hidden; display:flex;
+  background: var(--paper-raised); margin: 22px 0 8px; border: 1px solid var(--line-strong);
+}
+.run-emom-bar .seg-work{ background: var(--ink); height:100%; }
+.run-emom-bar .seg-rest{ background: transparent; height:100%; }
+.run-emom-caption{ font-size: .74rem; color: var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; font-family: var(--font-mono); }
+
+.run-bottom{ display:flex; justify-content:center; gap:1px; padding: 26px 20px 36px; flex-wrap:wrap; background:var(--line-strong); position:relative; }
+.run-bottom::before, .run-bottom::after{
+  content:"+"; position:absolute; bottom:5px; font-family: var(--font-mono); font-size:11px; color: var(--ink-soft); opacity:.5; z-index:1;
+}
+.run-bottom::before{ left:8px; }
+.run-bottom::after{ right:8px; }
+.run-bottom button{
+  background: var(--paper-raised); border:none; color: var(--ink);
+  padding: 17px 22px; border-radius: 0; font-weight:700; font-size:.82rem; cursor:pointer;
+  min-width: 120px; text-transform:uppercase; letter-spacing:.06em; font-family: var(--font-mono);
+}
+.run-bottom button:active{ opacity:.85; }
+.run-bottom .run-play{ background: var(--orange); color:#fff; }
+
+.wake-lock-note{
+  position:absolute; bottom:8px; left:0; right:0; text-align:center; font-size:.68rem; color: var(--ink-soft); font-family: var(--font-mono);
+}
+
+/* ============================================================
+   MODAL / DIALOG
+   ============================================================ */
+.modal-backdrop{
+  position:fixed; inset:0; background: rgba(15,15,13,.6); display:flex; align-items:center; justify-content:center;
+  padding: 20px; z-index: 150;
+}
+.modal{
+  background: var(--paper-raised); border-radius: var(--radius-lg); padding: 26px; max-width: 440px; width:100%;
+  box-shadow: none; border: 1px solid var(--line-strong); position:relative;
+}
+.modal::before, .modal::after{
+  content:"+"; position:absolute; top:6px; font-family: var(--font-mono); font-size:11px; color: var(--ink-soft); opacity:.4;
+}
+.modal::before{ left:8px; }
+.modal::after{ right:8px; }
+.modal h2{ font-size:.95rem; text-transform:uppercase; letter-spacing:.05em; }
+.modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top: 22px; }
+
+.share-url-box{
+  display:flex; gap:8px; align-items:center; background: var(--paper); border:1px solid var(--line-strong);
+  border-radius: var(--radius-sm); padding: 9px 10px; margin: 12px 0;
+}
+.share-url-box input{ border:none; background:none; flex:1; font-size:.78rem; padding:0; font-family: var(--font-mono); }
+
+.toast{
+  position:fixed; left:50%; bottom:24px; transform: translateX(-50%); background: var(--ink); color: var(--paper);
+  padding: 10px 18px; border-radius: var(--radius-sm); font-size:.8rem; z-index:200; opacity:0; pointer-events:none;
+  transition: opacity .2s ease; font-family: var(--font-mono);
+}
+.toast.is-visible{ opacity:1; }
+
+footer.app-footer{
+  text-align:center; color: var(--ink-soft); font-size:.68rem; padding: 14px 20px 16px; text-transform:uppercase;
+  letter-spacing:.06em; font-family: var(--font-mono);
+  max-width: 420px; margin: 40px auto 0; border: 1px solid var(--line-strong);
+}
+footer.app-footer::before{
+  content:"\2014 NOTES \2014"; display:block; font-size:.6rem; color: var(--ink-soft); opacity:.6; letter-spacing:.15em; margin-bottom:8px;
+}
+</style>
+</head>
+<body class="no-js">
+<script>document.body.classList.remove('no-js');</script>
+
+<a class="skip-link" href="#main-content">Skip to content</a>
+
+<div class="no-js-notice">
+  <h1>Timelord needs JavaScript</h1>
+  <p>This timer runs entirely in your browser and needs JavaScript turned on to build and run timers. Please enable it and reload the page.</p>
+</div>
+
+<div id="app">
+  <header class="topbar">
+    <a class="brand" href="#" id="homeLink">Timelord <small>workout timers</small></a>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="themeToggle" type="button" aria-pressed="false" title="Toggle dark mode">
+        <span aria-hidden="true" id="themeIcon">&#9789;</span>
+        <span class="visually-hidden">Toggle dark mode</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="main-content">
+
+    <!-- ============ LIBRARY VIEW ============ -->
+    <section class="view is-active" id="view-library" aria-labelledby="libraryHeading">
+      <div class="page-head" style="--idx:'01'">
+        <h1 id="libraryHeading">Your timers</h1>
+        <p>Build a custom sequence, generate rounds fast, or start from a preset.</p>
+      </div>
+
+      <div class="library-actions">
+        <button class="action-tile is-primary" id="goQuickBuilder" type="button">
+          <span class="tile-icon" aria-hidden="true">&#9889;</span>
+          <strong>Quick rounds</strong>
+          <span>"13 rounds of 45s" in a few taps</span>
+        </button>
+        <button class="action-tile" id="goManualBuilder" type="button">
+          <span class="tile-icon" aria-hidden="true">&#128221;</span>
+          <strong>Build manually</strong>
+          <span>Add and edit steps one by one</span>
+        </button>
+        <button class="action-tile" id="goPresets" type="button">
+          <span class="tile-icon" aria-hidden="true">&#127939;</span>
+          <strong>Presets</strong>
+          <span>Tabata, EMOM, Pomodoro &amp; more</span>
+        </button>
+      </div>
+
+      <h2 class="section-label">Saved timers</h2>
+      <div id="libraryListWrap">
+        <div class="empty-state" id="libraryEmpty">
+          <p style="margin:0;">No saved timers yet. Build one above — it'll show up here.</p>
+        </div>
+        <ul class="timer-list" id="libraryList" hidden></ul>
+      </div>
+    </section>
+
+    <!-- ============ PRESETS VIEW ============ -->
+    <section class="view" id="view-presets" aria-labelledby="presetsHeading">
+      <div class="page-head" style="--idx:'02'">
+        <button class="eyebrow-link" data-go="view-library" type="button">&#8592; Back to your timers</button>
+        <h1 id="presetsHeading">Presets</h1>
+        <p>Start from a common workout format. Every value is yours to change before you save or run it.</p>
+      </div>
+      <div class="preset-grid" id="presetGrid"></div>
+    </section>
+
+    <!-- ============ PRESET PARAMS VIEW ============ -->
+    <section class="view" id="view-preset-params" aria-labelledby="presetParamsHeading">
+      <div class="page-head" style="--idx:'03'">
+        <button class="eyebrow-link" data-go="view-presets" type="button">&#8592; Back to presets</button>
+        <h1 id="presetParamsHeading">Preset</h1>
+        <p id="presetParamsDesc"></p>
+      </div>
+      <div class="card">
+        <div id="presetParamsForm"></div>
+      </div>
+      <div class="sticky-actions">
+        <button class="btn" id="presetToBuilder" type="button">Fine-tune steps</button>
+        <button class="btn" id="presetSave" type="button">Save</button>
+        <button class="btn" id="presetShare" type="button">Share</button>
+        <button class="btn btn-primary btn-block" id="presetStart" type="button">Start</button>
+      </div>
+    </section>
+
+    <!-- ============ QUICK BUILDER VIEW ============ -->
+    <section class="view" id="view-quick" aria-labelledby="quickHeading">
+      <div class="page-head" style="--idx:'04'">
+        <button class="eyebrow-link" data-go="view-library" type="button">&#8592; Back to your timers</button>
+        <h1 id="quickHeading">Quick rounds</h1>
+        <p>Set a round count and duration — everything else is generated for you.</p>
+      </div>
+      <div class="card">
+        <div class="field">
+          <label for="qRounds">Number of rounds</label>
+          <input type="number" id="qRounds" min="1" max="200" value="10" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="qDuration">Duration per round</label>
+          <div class="time-input">
+            <input type="number" id="qDurationMin" min="0" max="59" value="0" aria-label="Minutes" inputmode="numeric"><span>min</span>
+            <input type="number" id="qDurationSec" min="0" max="59" value="45" aria-label="Seconds" inputmode="numeric"><span>sec</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="qRestToggle">Rest between rounds</label>
+          <div class="time-input">
+            <input type="checkbox" id="qRestEnabled" checked style="width:auto;">
+            <input type="number" id="qRestSec" min="0" max="600" value="15" aria-label="Rest seconds" inputmode="numeric" style="width:5em;"><span>sec rest</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="qPrepToggle">Prep countdown before round 1</label>
+          <div class="time-input">
+            <input type="checkbox" id="qPrepEnabled" checked style="width:auto;">
+            <input type="number" id="qPrepSec" min="0" max="60" value="10" aria-label="Prep seconds" inputmode="numeric" style="width:5em;"><span>sec to get ready</span>
+          </div>
+        </div>
+      </div>
+      <div class="sticky-actions">
+        <button class="btn" id="quickToBuilder" type="button">Fine-tune steps</button>
+        <button class="btn" id="quickSave" type="button">Save</button>
+        <button class="btn" id="quickShare" type="button">Share</button>
+        <button class="btn btn-primary btn-block" id="quickStart" type="button">Start</button>
+      </div>
+    </section>
+
+    <!-- ============ MANUAL BUILDER VIEW ============ -->
+    <section class="view" id="view-builder" aria-labelledby="builderHeading">
+      <div class="page-head" style="--idx:'05'">
+        <button class="eyebrow-link" data-go="view-library" type="button">&#8592; Back to your timers</button>
+        <h1 id="builderHeading">Build a timer</h1>
+        <p>Add steps, set how long each lasts, and reorder as needed.</p>
+      </div>
+
+      <div class="field">
+        <label for="timerName">Timer name</label>
+        <input type="text" id="timerName" placeholder="e.g. Saturday leg day" maxlength="60">
+      </div>
+
+      <div class="builder-summary">
+        <span>Total time</span>
+        <strong id="builderTotal">0:00</strong>
+      </div>
+
+      <div class="range-select-row" id="rangeSelectRow" hidden>
+        <span id="rangeSelectLabel">0 steps selected</span>
+        <button class="btn btn-sm" id="duplicateRangeBtn" type="button">Duplicate selection</button>
+        <button class="btn btn-sm btn-ghost" id="clearRangeBtn" type="button">Clear</button>
+      </div>
+
+      <ul class="step-list" id="stepList" aria-label="Timer steps"></ul>
+
+      <button class="btn btn-block" id="addStepBtn" type="button">+ Add step</button>
+
+      <div class="sticky-actions">
+        <button class="btn btn-danger" id="discardBuilderBtn" type="button">Discard</button>
+        <button class="btn btn-primary btn-block" id="saveTimerBtn" type="button">Save timer</button>
+      </div>
+    </section>
+
+    <!-- ============ PREVIEW / RUN-SETUP VIEW ============ -->
+    <section class="view" id="view-preview" aria-labelledby="previewHeading">
+      <div class="page-head" style="--idx:'06'">
+        <button class="eyebrow-link" data-go="view-library" type="button">&#8592; Back to your timers</button>
+        <h1 id="previewHeading">Timer</h1>
+        <p id="previewSummary"></p>
+      </div>
+      <ul class="step-list" id="previewStepList" aria-label="Steps in this timer"></ul>
+      <div class="sticky-actions">
+        <button class="btn" id="previewEdit" type="button">Edit</button>
+        <button class="btn" id="previewShare" type="button">Share</button>
+        <button class="btn btn-primary btn-block" id="previewStart" type="button">Start</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">Your timers are saved only on this device. Nothing is sent anywhere.</footer>
+
+  <!-- ============ RUN VIEW (overlay) ============ -->
+  <section class="run-view" id="view-run" data-state="prep" hidden aria-label="Timer running">
+    <div class="run-top">
+      <button id="runExit" type="button" aria-label="Exit timer">&#10005;</button>
+      <div style="text-align:center;">
+        <div class="run-round" id="runRound"></div>
+      </div>
+      <button id="runRestart" type="button" aria-label="Restart timer">&#8635;</button>
+    </div>
+    <div class="run-secondary-actions">
+      <button id="runSave" type="button">Save timer</button>
+      <button id="runShare" type="button">Share</button>
+    </div>
+    <div class="run-progress-track"><div class="run-progress-fill" id="runProgressFill"></div></div>
+    <div class="run-center">
+      <div class="run-label" id="runLabel">Get ready</div>
+      <div class="run-clock" id="runClock" aria-live="polite">0:10</div>
+      <div class="run-total" id="runTotal"></div>
+      <div class="run-emom-bar" id="runEmomBar" hidden>
+        <div class="seg-work" id="runEmomWork"></div>
+        <div class="seg-rest"></div>
+      </div>
+      <div class="run-emom-caption" id="runEmomCaption" hidden></div>
+      <div class="run-next" id="runNext"></div>
+    </div>
+    <div class="run-bottom">
+      <button id="runSkip" type="button">Skip</button>
+      <button class="run-play" id="runPlayPause" type="button">Pause</button>
+    </div>
+    <div class="wake-lock-note" id="wakeLockNote" hidden>Your screen may dim or lock — this browser can't keep it awake during this timer.</div>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   1. DATA MODEL + STORAGE
+   Every timer — preset, quick-built, or hand-built — is just:
+   { id, name, steps: [ {id,label,durationSec,type} ] }
+   One shape means one playback engine handles everything.
+   ============================================================ */
+
+var STORAGE_KEY = "interval_timers_v1";
+var THEME_KEY = "interval_theme";
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+function loadTimers(){
+  try{
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return [];
+    var parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  }catch(e){
+    console.warn("Could not read saved timers, starting fresh.", e);
+    return [];
+  }
+}
+function saveTimers(list){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    return true;
+  }catch(e){
+    console.warn("Could not save timers (storage may be full or blocked).", e);
+    showToast("Couldn't save — your browser's storage may be full or private.");
+    return false;
+  }
+}
+
+function fmtClock(totalSec){
+  totalSec = Math.max(0, Math.round(totalSec));
+  var m = Math.floor(totalSec/60), s = totalSec%60;
+  return m + ":" + (s<10?"0":"")+s;
+}
+function fmtDuration(totalSec){
+  var m = Math.floor(totalSec/60), s = totalSec%60;
+  if(m<=0) return s + "s";
+  if(s===0) return m + " min";
+  return m + ":" + (s<10?"0":"")+s;
+}
+
+/* ============================================================
+   2. PRESET GENERATORS
+   Each returns { name, steps[] } from a params object.
+   ============================================================ */
+
+function makeStep(label, durationSec, type){
+  return { id: uid(), label: label, durationSec: Math.max(1, Math.round(durationSec)), type: type };
+}
+
+var Presets = {
+  tabata: {
+    title: "Tabata",
+    blurb: "20s work / 10s rest × 8 rounds",
+    params: [
+      {key:"workSec", label:"Work", type:"time", def:20},
+      {key:"restSec", label:"Rest", type:"time", def:10},
+      {key:"rounds", label:"Rounds", type:"number", def:8, min:1, max:50},
+      {key:"prepSec", label:"Prep countdown", type:"time", def:10}
+    ],
+    generate: function(p){
+      var steps = [];
+      if(p.prepSec>0) steps.push(makeStep("Get ready", p.prepSec, "prep"));
+      for(var i=1;i<=p.rounds;i++){
+        steps.push(makeStep("Work "+i+"/"+p.rounds, p.workSec, "work"));
+        if(i<p.rounds || p.restAfterLast) steps.push(makeStep("Rest", p.restSec, "rest"));
+      }
+      return { name: "Tabata", steps: steps };
+    }
+  },
+  emom: {
+    title: "EMOM",
+    blurb: "Every minute, on the minute",
+    params: [
+      {key:"intervalSec", label:"Interval length", type:"time", def:60},
+      {key:"workSec", label:"Work target within interval", type:"time", def:40},
+      {key:"rounds", label:"Rounds", type:"number", def:10, min:1, max:60},
+      {key:"prepSec", label:"Prep countdown", type:"time", def:10}
+    ],
+    generate: function(p){
+      var steps = [];
+      if(p.prepSec>0) steps.push(makeStep("Get ready", p.prepSec, "prep"));
+      for(var i=1;i<=p.rounds;i++){
+        var step = makeStep("Interval "+i+"/"+p.rounds, p.intervalSec, "work");
+        step.emomWorkSec = Math.min(p.workSec, p.intervalSec);
+        steps.push(step);
+      }
+      return { name: "EMOM", steps: steps };
+    }
+  },
+  interval: {
+    title: "Generic interval",
+    blurb: "Any work/rest split, any round count",
+    params: [
+      {key:"workSec", label:"Work", type:"time", def:30},
+      {key:"restSec", label:"Rest", type:"time", def:15},
+      {key:"rounds", label:"Rounds", type:"number", def:10, min:1, max:100},
+      {key:"prepSec", label:"Prep countdown", type:"time", def:10}
+    ],
+    generate: function(p){
+      var steps = [];
+      if(p.prepSec>0) steps.push(makeStep("Get ready", p.prepSec, "prep"));
+      for(var i=1;i<=p.rounds;i++){
+        steps.push(makeStep("Work "+i+"/"+p.rounds, p.workSec, "work"));
+        if(i<p.rounds) steps.push(makeStep("Rest", p.restSec, "rest"));
+      }
+      return { name: "Interval timer", steps: steps };
+    }
+  },
+  pomodoro: {
+    title: "Pomodoro",
+    blurb: "Focused work blocks with breaks",
+    params: [
+      {key:"workMin", label:"Work length (min)", type:"number", def:25, min:1, max:120},
+      {key:"breakMin", label:"Short break (min)", type:"number", def:5, min:1, max:60},
+      {key:"longBreakMin", label:"Long break (min)", type:"number", def:15, min:1, max:120},
+      {key:"cycles", label:"Cycles", type:"number", def:4, min:1, max:20},
+      {key:"longBreakEvery", label:"Long break every N cycles", type:"number", def:4, min:1, max:20}
+    ],
+    generate: function(p){
+      var steps = [];
+      for(var i=1;i<=p.cycles;i++){
+        steps.push(makeStep("Focus "+i+"/"+p.cycles, p.workMin*60, "work"));
+        if(i<p.cycles){
+          var isLong = (i % p.longBreakEvery === 0);
+          steps.push(makeStep(isLong ? "Long break" : "Break", (isLong?p.longBreakMin:p.breakMin)*60, "rest"));
+        }
+      }
+      return { name: "Pomodoro", steps: steps };
+    }
+  },
+  fgb: {
+    title: "Fight Gone Bad",
+    blurb: "3 rounds × 5 stations, 1 min each",
+    params: [
+      {key:"stationSec", label:"Station length", type:"time", def:60},
+      {key:"restSec", label:"Rest between rounds", type:"time", def:60},
+      {key:"rounds", label:"Rounds", type:"number", def:3, min:1, max:10},
+      {key:"prepSec", label:"Prep countdown", type:"time", def:10}
+    ],
+    stationNames: ["Wall ball", "Sumo deadlift high-pull", "Box jump", "Push press", "Row (calories)"],
+    generate: function(p){
+      var steps = [];
+      var names = p.stationNames && p.stationNames.length ? p.stationNames : Presets.fgb.stationNames;
+      if(p.prepSec>0) steps.push(makeStep("Get ready", p.prepSec, "prep"));
+      for(var r=1;r<=p.rounds;r++){
+        for(var s=0;s<names.length;s++){
+          steps.push(makeStep(names[s] + " (Round "+r+")", p.stationSec, "work"));
+        }
+        if(r<p.rounds) steps.push(makeStep("Rest", p.restSec, "rest"));
+      }
+      return { name: "Fight Gone Bad", steps: steps };
+    }
+  }
+};
+
+function quickBuild(opts){
+  var steps = [];
+  if(opts.prepEnabled && opts.prepSec>0) steps.push(makeStep("Get ready", opts.prepSec, "prep"));
+  for(var i=1;i<=opts.rounds;i++){
+    steps.push(makeStep("Round "+i+"/"+opts.rounds, opts.durationSec, "work"));
+    if(opts.restEnabled && i<opts.rounds) steps.push(makeStep("Rest", opts.restSec, "rest"));
+  }
+  return { name: "Quick timer", steps: steps };
+}
+
+/* ============================================================
+   3. AUDIO ENGINE (Web Audio API)
+   Built with oscillators rather than <audio> tags so cues fire
+   reliably and don't depend on loading sound files. Unlocked by
+   the same tap that starts the timer (a required user gesture).
+   ============================================================ */
+var AudioEngine = (function(){
+  var ctx = null;
+  function ensureCtx(){
+    if(!ctx){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if(AC) ctx = new AC();
+    }
+    if(ctx && ctx.state === "suspended") ctx.resume();
+    return ctx;
+  }
+  function tone(freq, startOffset, durationSec, opts){
+    var c = ensureCtx();
+    if(!c) return;
+    opts = opts || {};
+    var osc = c.createOscillator();
+    var gain = c.createGain();
+    osc.type = opts.wave || "sine";
+    osc.frequency.value = freq;
+    var t0 = c.currentTime + (startOffset||0);
+    var peak = opts.volume !== undefined ? opts.volume : 0.18;
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + durationSec);
+    osc.connect(gain).connect(c.destination);
+    osc.start(t0);
+    osc.stop(t0 + durationSec + 0.02);
+  }
+  return {
+    unlock: function(){ ensureCtx(); },
+    /* soft, short tick — unobtrusive at 3-2-1, not jarring */
+    countdownTick: function(){ tone(880, 0, 0.09, {wave:"sine", volume:0.14}); },
+    /* distinct transition buzzer — noticeable mid-effort, not harsh */
+    transition: function(){
+      tone(523.25, 0, 0.16, {wave:"triangle", volume:0.22});
+      tone(659.25, 0.09, 0.18, {wave:"triangle", volume:0.2});
+    },
+    /* rewarding, final-feeling completion chime */
+    complete: function(){
+      tone(523.25, 0,    0.22, {wave:"sine", volume:0.2});
+      tone(659.25, 0.14, 0.22, {wave:"sine", volume:0.2});
+      tone(783.99, 0.28, 0.4,  {wave:"sine", volume:0.22});
+    }
+  };
+})();
+
+/* ============================================================
+   4. PLAYBACK ENGINE
+   Absolute-timestamp based: we compute the target end time once,
+   then on each tick derive remaining time from Date.now(). This
+   avoids setInterval drift and self-corrects after a backgrounded
+   tab throttles timers, instead of losing real time.
+   ============================================================ */
+function PlaybackEngine(timer, callbacks){
+  var steps = timer.steps;
+  var idx = -1; // -1 = not started
+  var stepEndAt = 0;
+  var remainingAtPause = null; // ms remaining when paused
+  var paused = false;
+  var rafId = null;
+  var beepedForStep = {}; // tracks which countdown seconds already beeped this step
+  var finished = false;
+
+  function currentStep(){ return steps[idx]; }
+
+  function startStep(i){
+    idx = i;
+    if(idx >= steps.length){ finish(); return; }
+    var step = steps[idx];
+    stepEndAt = Date.now() + step.durationSec*1000;
+    beepedForStep = {};
+    paused = false;
+    remainingAtPause = null;
+    callbacks.onStepStart(step, idx, steps);
+    tick();
+  }
+
+  function finish(){
+    finished = true;
+    if(rafId) cancelAnimationFrame(rafId);
+    callbacks.onComplete();
+  }
+
+  function tick(){
+    if(paused || finished) return;
+    var remainingMs = stepEndAt - Date.now();
+    if(remainingMs <= 0){
+      callbacks.onTick(0, currentStep(), idx, steps);
+      startStep(idx+1);
+      return;
+    }
+    var remSec = remainingMs/1000;
+    // countdown beeps in the last 3 seconds
+    var secLeft = Math.ceil(remSec);
+    if(secLeft <= 3 && secLeft >= 1 && !beepedForStep[secLeft]){
+      beepedForStep[secLeft] = true;
+      callbacks.onCountdownBeep && callbacks.onCountdownBeep(secLeft);
+    }
+    callbacks.onTick(remSec, currentStep(), idx, steps);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  return {
+    start: function(){ startStep(0); },
+    pause: function(){
+      if(paused || finished) return;
+      paused = true;
+      remainingAtPause = stepEndAt - Date.now();
+      if(rafId) cancelAnimationFrame(rafId);
+      callbacks.onPause && callbacks.onPause();
+    },
+    resume: function(){
+      if(!paused || finished) return;
+      stepEndAt = Date.now() + remainingAtPause;
+      paused = false;
+      callbacks.onResume && callbacks.onResume();
+      tick();
+    },
+    skip: function(){
+      if(finished) return;
+      if(rafId) cancelAnimationFrame(rafId);
+      startStep(idx+1);
+    },
+    restart: function(){
+      if(rafId) cancelAnimationFrame(rafId);
+      finished = false;
+      startStep(0);
+    },
+    stop: function(){
+      finished = true;
+      if(rafId) cancelAnimationFrame(rafId);
+    },
+    isPaused: function(){ return paused; }
+  };
+}
+
+/* ============================================================
+   5. STATE + VIEW ROUTING
+   ============================================================ */
+var state = {
+  timers: loadTimers(),
+  builderTimer: null,       // timer currently being edited in manual builder
+  builderReturnView: "view-library",
+  quickPreview: null,
+  activePreset: null,
+  previewTimer: null,       // timer queued up for the preview screen
+  selectedStepIds: [],      // for duplicate-range in builder
+  engine: null,
+  wakeLock: null
+};
+
+function $(sel, root){ return (root||document).querySelector(sel); }
+function $all(sel, root){ return Array.prototype.slice.call((root||document).querySelectorAll(sel)); }
+
+function showView(id){
+  $all(".view").forEach(function(v){ v.classList.remove("is-active"); });
+  var el = document.getElementById(id);
+  if(el) el.classList.add("is-active");
+  window.scrollTo(0,0);
+}
+
+var toastTimer = null;
+function showToast(msg){
+  var t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("is-visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove("is-visible"); }, 2600);
+}
+
+/* ---------- Theme ---------- */
+function initTheme(){
+  var saved = localStorage.getItem(THEME_KEY);
+  var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  var theme = saved || (prefersDark ? "dark" : "light");
+  applyTheme(theme);
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  $("#themeToggle").setAttribute("aria-pressed", theme==="dark" ? "true":"false");
+  $("#themeIcon").innerHTML = theme==="dark" ? "&#9788;" : "&#9789;";
+  localStorage.setItem(THEME_KEY, theme);
+}
+$("#themeToggle").addEventListener("click", function(){
+  var cur = document.documentElement.getAttribute("data-theme");
+  applyTheme(cur==="dark" ? "light" : "dark");
+});
+
+/* ---------- Nav wiring ---------- */
+$all("[data-go]").forEach(function(btn){
+  btn.addEventListener("click", function(){ showView(btn.getAttribute("data-go")); });
+});
+$("#homeLink").addEventListener("click", function(e){ e.preventDefault(); renderLibrary(); showView("view-library"); });
+$("#goQuickBuilder").addEventListener("click", function(){ resetQuickForm(); showView("view-quick"); });
+$("#goManualBuilder").addEventListener("click", function(){ startManualBuilder(null); });
+$("#goPresets").addEventListener("click", function(){ renderPresetGrid(); showView("view-presets"); });
+
+/* ============================================================
+   6. LIBRARY VIEW
+   ============================================================ */
+function timerTotalSec(timer){
+  return timer.steps.reduce(function(sum,s){ return sum + s.durationSec; }, 0);
+}
+function timerSummaryText(timer){
+  var workSteps = timer.steps.filter(function(s){ return s.type==="work"; }).length;
+  return workSteps + " step" + (workSteps===1?"":"s") + " · " + fmtDuration(timerTotalSec(timer)) + " total";
+}
+
+function renderLibrary(){
+  state.timers = loadTimers();
+  var list = $("#libraryList");
+  var empty = $("#libraryEmpty");
+  list.innerHTML = "";
+  if(state.timers.length===0){
+    empty.hidden = false; list.hidden = true; return;
+  }
+  empty.hidden = true; list.hidden = false;
+  state.timers.slice().reverse().forEach(function(timer){
+    var li = document.createElement("li");
+    li.className = "timer-row";
+    li.innerHTML =
+      '<div class="timer-row-info">' +
+        '<strong></strong><span></span>' +
+      '</div>' +
+      '<div class="timer-row-actions">' +
+        '<button class="btn btn-sm btn-primary" data-act="run">Run</button>' +
+        '<button class="btn btn-sm" data-act="edit">Edit</button>' +
+        '<button class="btn btn-sm btn-danger" data-act="delete">Delete</button>' +
+      '</div>';
+    li.querySelector("strong").textContent = timer.name || "Untitled timer";
+    li.querySelector("span").textContent = timerSummaryText(timer);
+    li.querySelector('[data-act="run"]').addEventListener("click", function(){ openPreview(timer); });
+    li.querySelector('[data-act="edit"]').addEventListener("click", function(){ startManualBuilder(cloneTimer(timer)); });
+    li.querySelector('[data-act="delete"]').addEventListener("click", function(){ confirmDeleteTimer(timer.id); });
+    list.appendChild(li);
+  });
+}
+
+function confirmDeleteTimer(id){
+  openConfirm("Delete this timer?", "This can't be undone.", function(){
+    state.timers = state.timers.filter(function(t){ return t.id!==id; });
+    saveTimers(state.timers);
+    renderLibrary();
+    showToast("Timer deleted.");
+  });
+}
+
+function cloneTimer(timer){
+  return JSON.parse(JSON.stringify(timer));
+}
+
+/* ============================================================
+   7. PRESETS VIEW
+   ============================================================ */
+function renderPresetGrid(){
+  var grid = $("#presetGrid");
+  grid.innerHTML = "";
+  Object.keys(Presets).forEach(function(key){
+    var p = Presets[key];
+    var card = document.createElement("button");
+    card.type = "button";
+    card.className = "preset-card";
+    card.innerHTML = "<strong></strong><span></span>";
+    card.querySelector("strong").textContent = p.title;
+    card.querySelector("span").textContent = p.blurb;
+    card.addEventListener("click", function(){ openPresetParams(key); });
+    grid.appendChild(card);
+  });
+}
+
+function openPresetParams(key){
+  state.activePreset = key;
+  var preset = Presets[key];
+  $("#presetParamsHeading").textContent = preset.title;
+  $("#presetParamsDesc").textContent = preset.blurb + ". Adjust anything below before you start.";
+  var form = $("#presetParamsForm");
+  form.innerHTML = "";
+
+  preset.params.forEach(function(param){
+    var wrap = document.createElement("div");
+    wrap.className = "field";
+    if(param.type === "time"){
+      var mins = Math.floor(param.def/60), secs = param.def%60;
+      wrap.innerHTML =
+        '<label>'+param.label+'</label>' +
+        '<div class="time-input">' +
+          '<input type="number" min="0" max="59" value="'+mins+'" data-k="'+param.key+'_m" inputmode="numeric"><span>min</span>' +
+          '<input type="number" min="0" max="59" value="'+secs+'" data-k="'+param.key+'_s" inputmode="numeric"><span>sec</span>' +
+        '</div>';
+    } else {
+      wrap.innerHTML =
+        '<label>'+param.label+'</label>' +
+        '<input type="number" min="'+(param.min!==undefined?param.min:0)+'" max="'+(param.max!==undefined?param.max:999)+'" value="'+param.def+'" data-k="'+param.key+'" inputmode="numeric">';
+    }
+    form.appendChild(wrap);
+  });
+
+  // Fight Gone Bad gets editable station names
+  if(key === "fgb"){
+    var wrap = document.createElement("div");
+    wrap.className = "field";
+    wrap.innerHTML = '<label>Stations (in order)</label>';
+    Presets.fgb.stationNames.forEach(function(name, i){
+      var input = document.createElement("input");
+      input.type = "text";
+      input.value = name;
+      input.setAttribute("data-station", i);
+      input.style.marginBottom = "8px";
+      wrap.appendChild(input);
+    });
+    form.appendChild(wrap);
+  }
+
+  showView("view-preset-params");
+}
+
+function readPresetParams(){
+  var key = state.activePreset;
+  var preset = Presets[key];
+  var params = {};
+  preset.params.forEach(function(p){
+    if(p.type === "time"){
+      var m = parseInt($('[data-k="'+p.key+'_m"]').value,10) || 0;
+      var s = parseInt($('[data-k="'+p.key+'_s"]').value,10) || 0;
+      params[p.key] = m*60+s;
+    } else {
+      params[p.key] = parseInt($('[data-k="'+p.key+'"]').value,10) || p.def;
+    }
+  });
+  if(key === "fgb"){
+    var names = $all('[data-station]').map(function(inp){ return inp.value.trim() || "Station"; });
+    params.stationNames = names;
+  }
+  return params;
+}
+
+function buildFromPreset(){
+  var preset = Presets[state.activePreset];
+  var params = readPresetParams();
+  var result = preset.generate(params);
+  return { id: uid(), name: result.name, steps: result.steps };
+}
+
+$("#presetStart").addEventListener("click", function(){ startRun(buildFromPreset()); });
+$("#presetToBuilder").addEventListener("click", function(){ startManualBuilder(buildFromPreset()); });
+
+/* ============================================================
+   8. QUICK BUILDER VIEW
+   ============================================================ */
+function resetQuickForm(){
+  $("#qRounds").value = 10;
+  $("#qDurationMin").value = 0;
+  $("#qDurationSec").value = 45;
+  $("#qRestEnabled").checked = true;
+  $("#qRestSec").value = 15;
+  $("#qPrepEnabled").checked = true;
+  $("#qPrepSec").value = 10;
+}
+function readQuickForm(){
+  return {
+    rounds: Math.max(1, parseInt($("#qRounds").value,10)||1),
+    durationSec: Math.max(1, (parseInt($("#qDurationMin").value,10)||0)*60 + (parseInt($("#qDurationSec").value,10)||0)),
+    restEnabled: $("#qRestEnabled").checked,
+    restSec: Math.max(0, parseInt($("#qRestSec").value,10)||0),
+    prepEnabled: $("#qPrepEnabled").checked,
+    prepSec: Math.max(0, parseInt($("#qPrepSec").value,10)||0)
+  };
+}
+function buildFromQuick(){
+  var result = quickBuild(readQuickForm());
+  return { id: uid(), name: result.name, steps: result.steps };
+}
+$("#quickStart").addEventListener("click", function(){ startRun(buildFromQuick()); });
+$("#quickToBuilder").addEventListener("click", function(){ startManualBuilder(buildFromQuick()); });
+
+/* ============================================================
+   9. MANUAL BUILDER VIEW
+   ============================================================ */
+function startManualBuilder(timer){
+  state.builderTimer = timer || { id: uid(), name: "", steps: [ makeStep("Work", 30, "work") ] };
+  state.selectedStepIds = [];
+  $("#timerName").value = state.builderTimer.name || "";
+  renderBuilder();
+  showView("view-builder");
+}
+
+function renderBuilder(){
+  var list = $("#stepList");
+  list.innerHTML = "";
+  var timer = state.builderTimer;
+  timer.steps.forEach(function(step, i){
+    var li = document.createElement("li");
+    li.className = "step-item";
+    li.setAttribute("draggable", "true");
+    li.dataset.id = step.id;
+    li.innerHTML =
+      '<input type="checkbox" class="step-select" aria-label="Select step" style="width:auto;">' +
+      '<div class="step-swatch '+step.type+'"></div>' +
+      '<div class="step-main">' +
+        '<strong></strong>' +
+        '<span></span>' +
+      '</div>' +
+      '<div class="step-controls">' +
+        '<button data-act="up" aria-label="Move up" title="Move up">&#8593;</button>' +
+        '<button data-act="down" aria-label="Move down" title="Move down">&#8595;</button>' +
+        '<button data-act="edit" aria-label="Edit step" title="Edit">&#9998;</button>' +
+        '<button data-act="dup" aria-label="Duplicate step" title="Duplicate">&#10697;</button>' +
+        '<button data-act="del" aria-label="Delete step" title="Delete">&#10005;</button>' +
+      '</div>';
+    li.querySelector("strong").textContent = step.label;
+    li.querySelector("span").textContent = capitalize(step.type) + " · " + fmtDuration(step.durationSec);
+    li.querySelector(".step-select").checked = state.selectedStepIds.indexOf(step.id) !== -1;
+    li.querySelector(".step-select").addEventListener("change", function(e){
+      toggleStepSelection(step.id, e.target.checked);
+    });
+    li.querySelector('[data-act="up"]').addEventListener("click", function(){ moveStep(i,-1); });
+    li.querySelector('[data-act="down"]').addEventListener("click", function(){ moveStep(i,1); });
+    li.querySelector('[data-act="edit"]').addEventListener("click", function(){ openStepEditor(step.id); });
+    li.querySelector('[data-act="dup"]').addEventListener("click", function(){ duplicateStep(step.id); });
+    li.querySelector('[data-act="del"]').addEventListener("click", function(){ deleteStep(step.id); });
+
+    // drag reorder
+    li.addEventListener("dragstart", function(){ li.classList.add("is-dragging"); li.dataset.dragIndex = i; });
+    li.addEventListener("dragend", function(){ li.classList.remove("is-dragging"); });
+    li.addEventListener("dragover", function(e){ e.preventDefault(); });
+    li.addEventListener("drop", function(e){
+      e.preventDefault();
+      var fromEl = list.querySelector(".is-dragging");
+      if(!fromEl) return;
+      var from = parseInt(fromEl.dataset.dragIndex,10);
+      reorderStep(from, i);
+    });
+
+    list.appendChild(li);
+  });
+  updateBuilderTotal();
+  updateRangeSelectUI();
+  if(timer.steps.length === 0){
+    var li = document.createElement("li");
+    li.innerHTML = '<p style="margin:12px 0;color:var(--ink-soft);">No steps yet. Add one below.</p>';
+    list.appendChild(li);
+  }
+}
+
+function capitalize(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+function updateBuilderTotal(){
+  $("#builderTotal").textContent = fmtDuration(timerTotalSec(state.builderTimer));
+}
+
+function findStepIndex(id){
+  return state.builderTimer.steps.findIndex(function(s){ return s.id===id; });
+}
+
+function moveStep(i, dir){
+  var steps = state.builderTimer.steps;
+  var j = i+dir;
+  if(j<0 || j>=steps.length) return;
+  var tmp = steps[i]; steps[i]=steps[j]; steps[j]=tmp;
+  renderBuilder();
+}
+function reorderStep(from, to){
+  if(from===to) return;
+  var steps = state.builderTimer.steps;
+  var item = steps.splice(from,1)[0];
+  steps.splice(to,0,item);
+  renderBuilder();
+}
+function duplicateStep(id){
+  var i = findStepIndex(id);
+  if(i===-1) return;
+  var copy = JSON.parse(JSON.stringify(state.builderTimer.steps[i]));
+  copy.id = uid();
+  state.builderTimer.steps.splice(i+1,0,copy);
+  renderBuilder();
+  showToast("Step duplicated.");
+}
+function deleteStep(id){
+  state.builderTimer.steps = state.builderTimer.steps.filter(function(s){ return s.id!==id; });
+  state.selectedStepIds = state.selectedStepIds.filter(function(x){ return x!==id; });
+  renderBuilder();
+}
+function toggleStepSelection(id, on){
+  if(on){ if(state.selectedStepIds.indexOf(id)===-1) state.selectedStepIds.push(id); }
+  else { state.selectedStepIds = state.selectedStepIds.filter(function(x){ return x!==id; }); }
+  updateRangeSelectUI();
+}
+function updateRangeSelectUI(){
+  var n = state.selectedStepIds.length;
+  $("#rangeSelectRow").hidden = n===0;
+  $("#rangeSelectLabel").textContent = n + " step" + (n===1?"":"s") + " selected";
+}
+$("#clearRangeBtn").addEventListener("click", function(){
+  state.selectedStepIds = [];
+  renderBuilder();
+});
+$("#duplicateRangeBtn").addEventListener("click", function(){
+  var steps = state.builderTimer.steps;
+  var ids = state.selectedStepIds;
+  if(ids.length===0) return;
+  var indices = ids.map(findStepIndex).filter(function(i){ return i!==-1; }).sort(function(a,b){return a-b;});
+  var lastIndex = indices[indices.length-1];
+  var block = indices.map(function(i){
+    var c = JSON.parse(JSON.stringify(steps[i])); c.id = uid(); return c;
+  });
+  steps.splice.apply(steps, [lastIndex+1, 0].concat(block));
+  state.selectedStepIds = [];
+  renderBuilder();
+  showToast("Selection duplicated.");
+});
+
+$("#addStepBtn").addEventListener("click", function(){
+  var newStep = makeStep("Work", 30, "work");
+  state.builderTimer.steps.push(newStep);
+  renderBuilder();
+  openStepEditor(newStep.id);
+});
+
+$("#timerName").addEventListener("input", function(){
+  state.builderTimer.name = $("#timerName").value;
+});
+
+$("#discardBuilderBtn").addEventListener("click", function(){
+  openConfirm("Discard this timer?", "Any unsaved changes will be lost.", function(){
+    renderLibrary(); showView("view-library");
+  });
+});
+
+$("#saveTimerBtn").addEventListener("click", function(){
+  var timer = state.builderTimer;
+  if(timer.steps.length===0){ showToast("Add at least one step first."); return; }
+  if(!timer.name || !timer.name.trim()){
+    timer.name = "Untitled timer";
+  }
+  var existingIdx = state.timers.findIndex(function(t){ return t.id===timer.id; });
+  if(existingIdx===-1) state.timers.push(timer);
+  else state.timers[existingIdx] = timer;
+  if(saveTimers(state.timers)){
+    showToast("Timer saved.");
+    renderLibrary();
+    showView("view-library");
+  }
+});
+
+/* ---- Step editor (small inline dialog) ---- */
+function openStepEditor(stepId){
+  var i = findStepIndex(stepId);
+  if(i===-1) return;
+  var step = state.builderTimer.steps[i];
+  var mins = Math.floor(step.durationSec/60), secs = step.durationSec%60;
+
+  var backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML =
+    '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="stepEditHeading">' +
+      '<h2 id="stepEditHeading">Edit step</h2>' +
+      '<div class="field">' +
+        '<label for="stepLabelInput">Label</label>' +
+        '<input type="text" id="stepLabelInput" maxlength="60">' +
+      '</div>' +
+      '<div class="field">' +
+        '<label for="stepMinInput">Duration</label>' +
+        '<div class="time-input">' +
+          '<input type="number" id="stepMinInput" min="0" max="59" inputmode="numeric"><span>min</span>' +
+          '<input type="number" id="stepSecInput" min="0" max="59" inputmode="numeric"><span>sec</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="field">' +
+        '<label>Type</label>' +
+        '<div class="type-toggle" role="group" aria-label="Step type">' +
+          '<button type="button" data-type="work">Work</button>' +
+          '<button type="button" data-type="rest">Rest</button>' +
+          '<button type="button" data-type="prep">Prep</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn" id="stepEditCancel">Cancel</button>' +
+        '<button class="btn btn-primary" id="stepEditSave">Done</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(backdrop);
+
+  var labelInput = $("#stepLabelInput", backdrop);
+  var minInput = $("#stepMinInput", backdrop);
+  var secInput = $("#stepSecInput", backdrop);
+  labelInput.value = step.label;
+  minInput.value = mins;
+  secInput.value = secs;
+  var typeBtns = $all(".type-toggle button", backdrop);
+  var chosenType = step.type;
+  function refreshTypeBtns(){
+    typeBtns.forEach(function(b){ b.setAttribute("aria-pressed", b.dataset.type===chosenType ? "true":"false"); });
+  }
+  refreshTypeBtns();
+  typeBtns.forEach(function(b){ b.addEventListener("click", function(){ chosenType=b.dataset.type; refreshTypeBtns(); }); });
+
+  labelInput.focus();
+
+  function close(){ document.body.removeChild(backdrop); }
+  backdrop.addEventListener("click", function(e){ if(e.target===backdrop) close(); });
+  $("#stepEditCancel", backdrop).addEventListener("click", close);
+  $("#stepEditSave", backdrop).addEventListener("click", function(){
+    step.label = labelInput.value.trim() || capitalize(chosenType);
+    step.durationSec = Math.max(1, (parseInt(minInput.value,10)||0)*60 + (parseInt(secInput.value,10)||0));
+    step.type = chosenType;
+    close();
+    renderBuilder();
+  });
+}
+
+/* ============================================================
+   9b. SAVE-TO-LIBRARY (usable from quick, presets, and mid-run)
+   ============================================================ */
+function openSaveModal(timer, onSaved){
+  if(!timer){ showToast("Nothing to save yet."); return; }
+  var backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML =
+    '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="saveHeading">' +
+      '<h2 id="saveHeading">Save this timer</h2>' +
+      '<div class="field">' +
+        '<label for="saveNameInput">Name</label>' +
+        '<input type="text" id="saveNameInput" maxlength="60">' +
+      '</div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn" id="saveCancel">Cancel</button>' +
+        '<button class="btn btn-primary" id="saveConfirm">Save</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(backdrop);
+  var input = $("#saveNameInput", backdrop);
+  input.value = timer.name || "";
+  input.focus();
+  function close(){ document.body.removeChild(backdrop); }
+  backdrop.addEventListener("click", function(e){ if(e.target===backdrop) close(); });
+  $("#saveCancel", backdrop).addEventListener("click", close);
+  $("#saveConfirm", backdrop).addEventListener("click", function(){
+    timer.name = input.value.trim() || "Untitled timer";
+    var idx = state.timers.findIndex(function(t){ return t.id===timer.id; });
+    if(idx===-1) state.timers.push(timer);
+    else state.timers[idx] = timer;
+    if(saveTimers(state.timers)){
+      showToast("Timer saved.");
+      close();
+      if(onSaved) onSaved(timer);
+    }
+  });
+}
+
+$("#quickSave").addEventListener("click", function(){ openSaveModal(buildFromQuick()); });
+$("#presetSave").addEventListener("click", function(){ openSaveModal(buildFromPreset()); });
+$("#quickShare").addEventListener("click", function(){ openShareModal(buildFromQuick()); });
+$("#presetShare").addEventListener("click", function(){ openShareModal(buildFromPreset()); });
+
+/* ============================================================
+   10. PREVIEW VIEW (shared entry point before running)
+   ============================================================ */
+function openPreview(timer){
+  state.previewTimer = timer;
+  $("#previewHeading").textContent = timer.name || "Untitled timer";
+  $("#previewSummary").textContent = timerSummaryText(timer);
+  var list = $("#previewStepList");
+  list.innerHTML = "";
+  timer.steps.forEach(function(step){
+    var li = document.createElement("li");
+    li.className = "step-item";
+    li.innerHTML = '<div class="step-swatch '+step.type+'"></div><div class="step-main"><strong></strong><span></span></div>';
+    li.querySelector("strong").textContent = step.label;
+    li.querySelector("span").textContent = capitalize(step.type) + " · " + fmtDuration(step.durationSec);
+    list.appendChild(li);
+  });
+  showView("view-preview");
+}
+$("#previewEdit").addEventListener("click", function(){ startManualBuilder(cloneTimer(state.previewTimer)); });
+$("#previewStart").addEventListener("click", function(){ startRun(state.previewTimer); });
+$("#previewShare").addEventListener("click", function(){ openShareModal(state.previewTimer); });
+
+/* ============================================================
+   11. SHARE-VIA-LINK
+   Encoded as compact short-keyed JSON, base64url, in ?t= param.
+   Keeps URLs shorter than verbose field names would allow.
+   ============================================================ */
+var TYPE_CODE = { work:"w", rest:"r", prep:"p" };
+var CODE_TYPE = { w:"work", r:"rest", p:"prep" };
+
+function encodeTimer(timer){
+  var compact = {
+    n: timer.name,
+    s: timer.steps.map(function(s){
+      var arr = [s.label, s.durationSec, TYPE_CODE[s.type] || "w"];
+      if(s.emomWorkSec !== undefined) arr.push(s.emomWorkSec);
+      return arr;
+    })
+  };
+  var json = JSON.stringify(compact);
+  try{
+    return b64urlEncode(json);
+  }catch(e){ return null; }
+}
+function decodeTimer(str){
+  try{
+    var json = b64urlDecode(str);
+    var compact = JSON.parse(json);
+    var steps = compact.s.map(function(arr){
+      var step = makeStep(arr[0], arr[1], CODE_TYPE[arr[2]] || "work");
+      if(arr[3] !== undefined) step.emomWorkSec = arr[3];
+      return step;
+    });
+    return { id: uid(), name: compact.n || "Shared timer", steps: steps };
+  }catch(e){
+    return null;
+  }
+}
+function b64urlEncode(str){
+  var b64 = btoa(unescape(encodeURIComponent(str)));
+  return b64.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function b64urlDecode(str){
+  var b64 = str.replace(/-/g,"+").replace(/_/g,"/");
+  while(b64.length % 4) b64 += "=";
+  return decodeURIComponent(escape(atob(b64)));
+}
+
+function openShareModal(timer){
+  var encoded = encodeTimer(timer);
+  var backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  if(!encoded){
+    backdrop.innerHTML =
+      '<div class="modal"><h2>Can\'t create a link</h2>' +
+      '<p>This timer has too many steps to fit in a shareable link. Try trimming it down.</p>' +
+      '<div class="modal-actions"><button class="btn btn-primary" id="shareCloseOnly">Close</button></div></div>';
+    document.body.appendChild(backdrop);
+    $("#shareCloseOnly", backdrop).addEventListener("click", function(){ document.body.removeChild(backdrop); });
+    return;
+  }
+  var url = location.origin + location.pathname + "?t=" + encoded;
+  var tooLong = url.length > 1900;
+  backdrop.innerHTML =
+    '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="shareHeading">' +
+      '<h2 id="shareHeading">Share this timer</h2>' +
+      '<p>Anyone who opens this link can preview and run it — no account needed.</p>' +
+      '<div class="share-url-box"><input type="text" id="shareUrlInput" readonly></div>' +
+      (tooLong ? '<p style="color:var(--danger);font-size:.85rem;">This link is quite long — some apps may truncate it when pasted.</p>' : '') +
+      '<div class="modal-actions">' +
+        '<button class="btn" id="shareClose">Close</button>' +
+        '<button class="btn btn-primary" id="shareCopy">Copy link</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(backdrop);
+  $("#shareUrlInput", backdrop).value = url;
+  function close(){ document.body.removeChild(backdrop); }
+  backdrop.addEventListener("click", function(e){ if(e.target===backdrop) close(); });
+  $("#shareClose", backdrop).addEventListener("click", close);
+  $("#shareCopy", backdrop).addEventListener("click", function(){
+    var input = $("#shareUrlInput", backdrop);
+    input.select();
+    navigator.clipboard && navigator.clipboard.writeText(url).then(function(){
+      showToast("Link copied.");
+    }).catch(function(){
+      document.execCommand && document.execCommand("copy");
+      showToast("Link copied.");
+    });
+  });
+}
+
+function checkForSharedLink(){
+  var params = new URLSearchParams(location.search);
+  var t = params.get("t");
+  if(!t) return;
+  var timer = decodeTimer(t);
+  if(timer){
+    openPreview(timer);
+    // give the previewed timer an explicit "save" affordance via edit->save flow already present
+  } else {
+    showToast("That timer link looks broken.");
+  }
+}
+
+/* ============================================================
+   12. CONFIRM DIALOG (generic)
+   ============================================================ */
+function openConfirm(title, body, onConfirm){
+  var backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML =
+    '<div class="modal" role="alertdialog" aria-modal="true">' +
+      '<h2></h2><p></p>' +
+      '<div class="modal-actions">' +
+        '<button class="btn" id="confirmCancel">Cancel</button>' +
+        '<button class="btn btn-danger" id="confirmOk">Confirm</button>' +
+      '</div>' +
+    '</div>';
+  backdrop.querySelector("h2").textContent = title;
+  backdrop.querySelector("p").textContent = body;
+  document.body.appendChild(backdrop);
+  function close(){ document.body.removeChild(backdrop); }
+  backdrop.addEventListener("click", function(e){ if(e.target===backdrop) close(); });
+  $("#confirmCancel", backdrop).addEventListener("click", close);
+  $("#confirmOk", backdrop).addEventListener("click", function(){ close(); onConfirm(); });
+}
+
+/* ============================================================
+   13. RUN VIEW / PLAYBACK UI
+   ============================================================ */
+var runEl = $("#view-run");
+
+function startRun(timer){
+  if(!timer || !timer.steps || timer.steps.length===0){
+    showToast("This timer has no steps yet.");
+    return;
+  }
+  AudioEngine.unlock();
+  runEl.hidden = false;
+  document.body.style.overflow = "hidden";
+  requestWakeLock();
+  state.currentRunTimer = timer;
+
+  state.engine = PlaybackEngine(timer, {
+    onStepStart: function(step, i, steps){
+      runEl.dataset.state = step.type;
+      $("#runLabel").textContent = step.label;
+      var roundText = describeRound(steps, i);
+      $("#runRound").textContent = roundText;
+      var next = steps[i+1];
+      $("#runNext").textContent = next ? ("Next: " + next.label + " · " + fmtDuration(next.durationSec)) : "Last step";
+      if(i>0) AudioEngine.transition();
+
+      var emomBar = $("#runEmomBar"), emomCap = $("#runEmomCaption");
+      if(step.emomWorkSec !== undefined){
+        emomBar.hidden = false; emomCap.hidden = false;
+        var pct = Math.min(100, (step.emomWorkSec/step.durationSec)*100);
+        $("#runEmomWork").style.width = pct + "%";
+        emomCap.textContent = "Work " + fmtDuration(step.emomWorkSec) + " · Free " + fmtDuration(step.durationSec - step.emomWorkSec);
+      } else {
+        emomBar.hidden = true; emomCap.hidden = true;
+      }
+    },
+    onTick: function(remainingSec, step, i, steps){
+      $("#runClock").textContent = fmtClock(remainingSec);
+      var pct = 100 - (remainingSec/step.durationSec)*100;
+      $("#runProgressFill").style.width = Math.max(0,Math.min(100,pct)) + "%";
+      var futureSec = steps.slice(i+1).reduce(function(sum,s){ return sum+s.durationSec; }, 0);
+      $("#runTotal").textContent = fmtClock(remainingSec + futureSec) + " total left";
+    },
+    onCountdownBeep: function(){ AudioEngine.countdownTick(); },
+    onPause: function(){ $("#runPlayPause").textContent = "Resume"; },
+    onResume: function(){ $("#runPlayPause").textContent = "Pause"; },
+    onComplete: function(){
+      runEl.dataset.state = "done";
+      $("#runLabel").textContent = "Done";
+      $("#runRound").textContent = "";
+      $("#runNext").textContent = "";
+      $("#runEmomBar").hidden = true; $("#runEmomCaption").hidden = true;
+      $("#runClock").textContent = "\u2713";
+      $("#runTotal").textContent = "";
+      $("#runProgressFill").style.width = "100%";
+      $("#runPlayPause").textContent = "Close";
+      AudioEngine.complete();
+      releaseWakeLock();
+    }
+  });
+  $("#runPlayPause").textContent = "Pause";
+  state.engine.start();
+}
+
+function describeRound(steps, i){
+  var workSteps = steps.filter(function(s){ return s.type==="work"; });
+  if(workSteps.length<=1) return "";
+  var currentStep = steps[i];
+  if(currentStep.type!=="work"){
+    // find how many work steps have completed so far
+    var completed = steps.slice(0,i).filter(function(s){return s.type==="work";}).length;
+    return "Round " + completed + " of " + workSteps.length;
+  }
+  var roundNum = steps.slice(0,i+1).filter(function(s){return s.type==="work";}).length;
+  return "Round " + roundNum + " of " + workSteps.length;
+}
+
+function exitRun(){
+  if(state.engine) state.engine.stop();
+  state.engine = null;
+  runEl.hidden = true;
+  document.body.style.overflow = "";
+  releaseWakeLock();
+  renderLibrary();
+  showView("view-library");
+}
+
+$("#runExit").addEventListener("click", function(){
+  openConfirm("Exit this timer?", "Your progress in this run will be lost.", exitRun);
+});
+$("#runRestart").addEventListener("click", function(){
+  if(state.engine) state.engine.restart();
+});
+$("#runSkip").addEventListener("click", function(){
+  if(state.engine) state.engine.skip();
+});
+$("#runSave").addEventListener("click", function(){ openSaveModal(state.currentRunTimer); });
+$("#runShare").addEventListener("click", function(){ openShareModal(state.currentRunTimer); });
+$("#runPlayPause").addEventListener("click", function(){
+  if(!state.engine) return;
+  if($("#runPlayPause").textContent === "Close"){ exitRun(); return; }
+  if(state.engine.isPaused()) state.engine.resume();
+  else state.engine.pause();
+});
+
+/* ---- Screen Wake Lock, with graceful fallback ---- */
+function requestWakeLock(){
+  if("wakeLock" in navigator){
+    navigator.wakeLock.request("screen").then(function(lock){
+      state.wakeLock = lock;
+      $("#wakeLockNote").hidden = true;
+      lock.addEventListener("release", function(){ state.wakeLock = null; });
+    }).catch(function(){
+      $("#wakeLockNote").hidden = false;
+    });
+  } else {
+    $("#wakeLockNote").hidden = false;
+  }
+}
+function releaseWakeLock(){
+  if(state.wakeLock){ state.wakeLock.release().catch(function(){}); state.wakeLock = null; }
+}
+document.addEventListener("visibilitychange", function(){
+  if(document.visibilityState === "visible" && !runEl.hidden && !state.wakeLock){
+    requestWakeLock();
+  }
+});
+
+/* ============================================================
+   14. INIT
+   ============================================================ */
+initTheme();
+renderLibrary();
+checkForSharedLink();
+
+})();
+</script>
+</body>
+</html>
